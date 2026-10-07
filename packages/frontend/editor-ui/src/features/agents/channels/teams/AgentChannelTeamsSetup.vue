@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 import { saveAs } from 'file-saver';
 import { N8nButton, N8nCopyInput, N8nIcon, N8nLink, N8nStepper, N8nText } from '@n8n/design-system';
-import type {
-	AgentJsonConfig,
-	AgentTeamsIntegrationSettings,
-	ChatIntegrationDescriptor,
-	TeamsAgentSetupState,
-	TeamsCredentialCheck,
+import {
+	resolveAgentPersonalisation,
+	type AgentTeamsIntegrationSettings,
+	type ChatIntegrationDescriptor,
+	type TeamsAgentSetupState,
+	type TeamsCredentialCheck,
 } from '@n8n/api-types';
 import { useI18n } from '@n8n/i18n';
 import { useToast } from '@n8n/composables/useToast';
@@ -26,6 +26,7 @@ import { availabilityFrom, TEAMS_PACKAGE_FILENAME, type TeamsAvailability } from
 import AgentChannelTeamsIdentityCard from './AgentChannelTeamsIdentityCard.vue';
 import { useAgentTelemetry } from '../../composables/useAgentTelemetry';
 import { checkTeamsCredential, fetchTeamsAppPackage, getTeamsSetupState } from './api';
+import { AGENT_PERSONALISATION_KEY } from '../types';
 
 const credentialId = defineModel<string>({ default: '' });
 
@@ -45,7 +46,6 @@ const props = withDefaults(
 		agentId: string;
 		forceNewCredential?: boolean;
 		savedSettings?: AgentTeamsIntegrationSettings;
-		personalisation?: AgentJsonConfig['personalisation'] | null;
 		ensureAgentPersisted?: () => Promise<void>;
 		/** Saves without closing the modal, so the card can act on saved settings. */
 		persistChannel?: () => Promise<boolean>;
@@ -65,10 +65,15 @@ const props = withDefaults(
 		errorIsConflict: false,
 		forceNewCredential: false,
 		savedSettings: undefined,
-		personalisation: null,
 		ensureAgentPersisted: undefined,
 		persistChannel: undefined,
 	},
+);
+
+// The builder provides it. The default keeps the card drawable when mounted on its own.
+const personalisation = inject(
+	AGENT_PERSONALISATION_KEY,
+	computed(() => resolveAgentPersonalisation(null)),
 );
 
 const emit = defineEmits<{
