@@ -19,6 +19,7 @@ import { AgentChatBridge } from '../agent-chat-bridge';
 import {
 	AgentChatIntegration,
 	ChatIntegrationRegistry,
+	InboundAttachmentAccessError,
 	type AgentChatIntegrationContext,
 } from '../agent-chat-integration';
 import type { ComponentMapper } from '../component-mapper';
@@ -2166,6 +2167,30 @@ describe('AgentChatBridge — consumeStream', () => {
 			expect(config.attachments).toBeUndefined();
 			expect(config.message).toContain('[Attachment "broken.pdf" could not be processed]');
 			expect(config.message).toContain('[Attachment "huge.pdf" was skipped: larger than 10 MB]');
+		});
+
+		it('passes on why the platform refused a download', async () => {
+			const agentExecutor = makeAgentExecutor([finishChunk]);
+			const handlers = makeBridge(agentExecutor, makeAttachmentService());
+
+			await handlers.mention!(makeThread(), {
+				text: 'hi',
+				author: { userId: 'u1', userName: 'user1' },
+				attachments: [
+					{
+						type: 'file',
+						name: 'plan.pdf',
+						fetchData: vi
+							.fn()
+							.mockRejectedValue(new InboundAttachmentAccessError('ask an administrator')),
+					},
+				],
+			});
+
+			const config = agentExecutor.captured[0] as { message: string };
+			expect(config.message).toContain(
+				'[Attachment "plan.pdf" could not be read: ask an administrator]',
+			);
 		});
 	});
 
