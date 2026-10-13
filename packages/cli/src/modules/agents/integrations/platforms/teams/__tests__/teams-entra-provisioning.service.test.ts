@@ -195,7 +195,7 @@ describe('TeamsEntraProvisioningService', () => {
 			),
 		});
 
-		await expect(service.provision(options)).rejects.toThrow(/not allowed to register/);
+		await expect(service.provision(options)).rejects.toThrow(/doesn’t let you register apps/);
 	});
 
 	it('refuses a personal Microsoft account', async () => {
@@ -323,7 +323,7 @@ describe('TeamsEntraProvisioningService', () => {
 					failed(403, 'Authorization_RequestDenied'),
 			});
 
-			await expect(service.provision(options)).rejects.toThrow(/not allowed to register/);
+			await expect(service.provision(options)).rejects.toThrow(/doesn’t let you register apps/);
 		});
 	});
 
