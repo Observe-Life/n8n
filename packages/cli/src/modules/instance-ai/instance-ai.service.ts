@@ -2852,6 +2852,7 @@ export class InstanceAiService {
 		const flagDisabledSkillIds = disabledInstanceAiSkillIds({
 			configEvalsEnabled,
 			instanceContextEnabled,
+			agentsModuleEnabled: Container.get(ModuleRegistry).isActive('agents'),
 		});
 		const selectedSkills = await loadInstanceAiPromptSkills(selectedPrompt.profile);
 		const selectedRuntimeSkills = selectedSkills.source;
