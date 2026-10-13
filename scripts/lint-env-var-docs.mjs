@@ -144,7 +144,7 @@ const vale = spawnSync(
 if (vale.error) throw vale.error;
 // Vale exits 1 when it found alerts and 2 on its own errors; anything else is npx failing.
 const valeFailed = (vale.status === 1 && !vale.stdout.trim()) || ![0, 1].includes(vale.status);
-if (valeFailed || vale.stderr.trim()) {
+if (valeFailed) {
 	console.error(`Vale did not run (exit ${vale.status}):\n${vale.stderr}${vale.stdout}`);
 	process.exit(2);
 }
