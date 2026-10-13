@@ -12,6 +12,7 @@ import type { AgentExecutionService, ThreadListItem } from '../agent-execution.s
 import type { AgentIntegrationPersistenceService } from '../agent-integration-persistence.service';
 import type { AgentSkillsService } from '../agent-skills.service';
 import type { AgentTaskService } from '../agent-task.service';
+import type { AgentsSettingsService } from '../agents-settings.service';
 import type { AgentsToolsService } from '../agents-tools.service';
 import type { AgentsService } from '../agents.service';
 import type { AttachableWorkflowsService } from '../attachable-workflows.service';
@@ -30,6 +31,8 @@ function makeService() {
 	const attachableWorkflowsService = mock<AttachableWorkflowsService>();
 	const mcpRegistryService = mock<McpRegistryService>();
 	const agentsToolsService = mock<AgentsToolsService>();
+	const agentsSettingsService = mock<AgentsSettingsService>();
+	agentsSettingsService.assertEnabled.mockResolvedValue(undefined);
 	const service = new InstanceAiAgentContextAdapterService(
 		agentsService,
 		agentSkillsService,
@@ -40,6 +43,7 @@ function makeService() {
 		mcpRegistryService,
 		agentsToolsService,
 		createAgentSkillRefsService(),
+		agentsSettingsService,
 	);
 	return {
 		service,
@@ -51,6 +55,7 @@ function makeService() {
 		attachableWorkflowsService,
 		mcpRegistryService,
 		agentsToolsService,
+		agentsSettingsService,
 	};
 }
 
@@ -72,6 +77,20 @@ describe('InstanceAiAgentContextAdapterService', () => {
 	beforeEach(() => {
 		vi.mocked(userHasScopes).mockReset();
 		vi.mocked(userHasScopes).mockResolvedValue(true);
+	});
+
+	it('rejects lookups when Agents are turned off', async () => {
+		const { service, agentsService, agentsSettingsService } = makeService();
+		agentsSettingsService.assertEnabled.mockRejectedValue(
+			new ForbiddenError(
+				'Agents are disabled. Ask an instance admin to enable them in Settings > Agents.',
+			),
+		);
+
+		await expect(
+			service.createReader(user, 'project-1').lookup({ type: 'config', agentId: 'agent-1' }),
+		).rejects.toThrow(UserError);
+		expect(agentsService.findById).not.toHaveBeenCalled();
 	});
 
 	it('labels config as the current draft and includes publication state', async () => {
