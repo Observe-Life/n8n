@@ -148,13 +148,14 @@ Attack narrative and an internal cookie name on a public page. Good:
 Run the docs lint over the `@Env` properties you changed:
 
 ```bash
-pnpm lint:env-var-docs          # files changed against origin/master
+pnpm lint:env-var-docs          # @Env declarations you added or changed
 pnpm lint:env-var-docs --all    # every @Env in the repo
 ```
 
 It runs the same Vale rules as the n8n-docs CI, so a clean run here means the
-generated docs page won't raise style comments later. Fix every alert on a
-comment you added or changed. Alerts on comments you didn't touch are optional.
+generated docs page won't raise style comments later. The default mode checks
+only declarations inside your diff against `origin/master`, so existing
+alerts in the same file don't show up. Fix every alert it reports.
 The first run fetches the rules and the Vale binary and takes about 10 seconds.
 Later runs take a few seconds.
 

@@ -3,7 +3,7 @@
 // The docs site publishes these comments as the env var reference, so they
 // must pass the same checks a docs PR gets.
 //
-//   node scripts/lint-env-var-docs.mjs            # @Env files changed vs origin/master
+//   node scripts/lint-env-var-docs.mjs            # @Env declarations changed vs origin/master
 //   node scripts/lint-env-var-docs.mjs --all      # every @Env in packages/
 //   node scripts/lint-env-var-docs.mjs --refresh  # re-fetch the n8n-docs rules
 
@@ -43,29 +43,36 @@ const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).tr
 // --- pick files -------------------------------------------------------------
 const isSource = (f) =>
 	f.endsWith('.ts') && !/\.(test|spec|d)\.ts$/.test(f) && !/\/(test|__tests__)\//.test(f);
-let files;
-if (args.has('--all')) {
-	files = git('grep', '-l', '@Env(', '--', 'packages').split('\n');
-} else {
-	const base = git('merge-base', 'origin/master', 'HEAD');
-	files = git('diff', '--name-only', base, '--', 'packages').split('\n').filter(Boolean);
-	files = files.filter(
-		(f) => existsSync(join(ROOT, f)) && readFileSync(join(ROOT, f), 'utf8').includes('@Env('),
-	);
-}
+const all = args.has('--all');
+const base = all ? undefined : git('merge-base', 'origin/master', 'HEAD');
+let files = all
+	? git('grep', '-l', '@Env(', '--', 'packages').split('\n')
+	: git('diff', '--name-only', base, '--', 'packages')
+			.split('\n')
+			.filter((f) => f && existsSync(join(ROOT, f)));
 files = files.filter(isSource);
-if (files.length === 0) {
-	console.log('No @Env declarations to lint.');
-	process.exit(0);
+
+// New-side line ranges of the diff hunks, so only touched declarations get linted.
+function changedRanges(file) {
+	const diff = git('diff', '-U0', base, '--', file);
+	return [...diff.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)].map(([, start, count]) => [
+		Number(start),
+		Number(start) + Math.max(Number(count ?? 1), 1) - 1,
+	]);
 }
+const touches = (ranges, from, to) => ranges.some(([a, b]) => from <= b && to >= a);
 
 // --- extract jsdoc ------------------------------------------------------------
 const ENV_RE = /(\/\*\*(?:(?!\*\/)[\s\S])*?\*\/\s*)?@Env\(['"]([A-Z0-9_]+)['"]/g;
 const rows = [];
 for (const file of files) {
 	const source = readFileSync(join(ROOT, file), 'utf8');
+	const ranges = all ? undefined : changedRanges(file);
 	for (const match of source.matchAll(ENV_RE)) {
-		const line = source.slice(0, match.index).split('\n').length;
+		const lineOf = (offset) => source.slice(0, offset).split('\n').length;
+		const from = lineOf(match.index);
+		const line = lineOf(match.index + (match[1]?.length ?? 0));
+		if (ranges && !touches(ranges, from, line)) continue;
 		const doc = (match[1] ?? '')
 			.replace(/^\s*\/\*\*|\*\/\s*$/g, '')
 			.split('\n')
@@ -74,6 +81,10 @@ for (const file of files) {
 			.join(' ');
 		rows.push({ file, line, name: match[2], doc });
 	}
+}
+if (rows.length === 0) {
+	console.log('No @Env declarations to lint.');
+	process.exit(0);
 }
 
 // --- fetch n8n-docs rules ----------------------------------------------------
