@@ -1800,6 +1800,7 @@ export class TelemetryEventRelay extends EventRelay {
 				memory_limit: memoryLimit === null ? null : memoryLimit / 1024,
 				cpu_limit: cpu.limit,
 				cpu_limit_source: cpu.source,
+				cpu_weight: cpu.weight,
 				runtime,
 				kubernetes_provider:
 					runtime === 'kubernetes' ? detectKubernetesProvider(os.release()) : undefined,
