@@ -142,6 +142,12 @@ const vale = spawnSync(
 	{ encoding: 'utf8' },
 );
 if (vale.error) throw vale.error;
+// Vale exits 1 when it found alerts and 2 on its own errors; anything else is npx failing.
+const valeFailed = (vale.status === 1 && !vale.stdout.trim()) || ![0, 1].includes(vale.status);
+if (valeFailed || vale.stderr.trim()) {
+	console.error(`Vale did not run (exit ${vale.status}):\n${vale.stderr}${vale.stdout}`);
+	process.exit(2);
+}
 
 // Each row is one paragraph: markdown line 2n+1 -> row n.
 const alerts = [];
@@ -149,6 +155,10 @@ for (const r of rows) if (!r.doc) alerts.push(`${r.file}:${r.line} ${r.name}: mi
 for (const out of vale.stdout.split('\n').filter(Boolean)) {
 	const [, mdLine, , rule, ...rest] = out.split(':');
 	const row = rows[Math.floor((Number(mdLine) - 1) / 2)];
+	if (!row) {
+		console.error(`Unexpected Vale output: ${out}`);
+		process.exit(2);
+	}
 	alerts.push(`${row.file}:${row.line} ${row.name}: ${rule.trim()} ${rest.join(':').trim()}`);
 }
 for (const a of alerts.sort()) console.log(a);
