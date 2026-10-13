@@ -157,7 +157,8 @@ generated docs page won't raise style comments later. The default mode checks
 only declarations inside your diff against `origin/master`, so existing
 alerts in the same file don't show up. Fix every alert it reports.
 The first run fetches the rules and the Vale binary and takes about 10 seconds.
-Later runs take a few seconds.
+Later runs take a few seconds. The rules refresh on their own once a week;
+pass `--refresh` to fetch them now.
 
 ## Review checklist
 

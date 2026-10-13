@@ -8,7 +8,7 @@
 //   node scripts/lint-env-var-docs.mjs --refresh  # re-fetch the n8n-docs rules
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -88,17 +88,31 @@ if (rows.length === 0) {
 }
 
 // --- fetch n8n-docs rules ----------------------------------------------------
+// Re-cloned once a week so the local check tracks the rules the docs CI runs.
 const styles = join(CACHE, 'n8n-docs');
-if (args.has('--refresh')) rmSync(styles, { recursive: true, force: true });
-if (!existsSync(join(styles, 'styles'))) {
+const stamp = join(CACHE, 'fetched-at');
+const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const fetchedAt = existsSync(stamp) ? Number(readFileSync(stamp, 'utf8')) : 0;
+const haveRules = existsSync(join(styles, 'styles'));
+if (args.has('--refresh') || !haveRules || Date.now() - fetchedAt > TTL_MS) {
+	const fresh = `${styles}.tmp`;
 	mkdirSync(CACHE, { recursive: true });
-	rmSync(styles, { recursive: true, force: true });
-	execFileSync(
-		'git',
-		['clone', '-q', '--depth', '1', '--filter=blob:none', '--sparse', DOCS_REPO, styles],
-		{ stdio: 'inherit' },
-	);
-	execFileSync('git', ['sparse-checkout', 'set', 'styles'], { cwd: styles, stdio: 'inherit' });
+	rmSync(fresh, { recursive: true, force: true });
+	try {
+		execFileSync(
+			'git',
+			['clone', '-q', '--depth', '1', '--filter=blob:none', '--sparse', DOCS_REPO, fresh],
+			{ stdio: ['ignore', 'ignore', 'pipe'] },
+		);
+		execFileSync('git', ['sparse-checkout', 'set', 'styles'], { cwd: fresh, stdio: 'ignore' });
+		rmSync(styles, { recursive: true, force: true });
+		renameSync(fresh, styles);
+		writeFileSync(stamp, String(Date.now()));
+	} catch (error) {
+		rmSync(fresh, { recursive: true, force: true });
+		if (!haveRules) throw error;
+		console.warn(`Could not refresh the n8n-docs rules, using the cached copy: ${error.message}`);
+	}
 }
 // Own config: same rule set as n8n-docs, plus an accept list for operator vocabulary.
 const vocab = join(styles, 'styles', 'config', 'vocabularies', 'env-var-docs');
