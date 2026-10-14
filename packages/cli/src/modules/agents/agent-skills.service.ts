@@ -385,11 +385,8 @@ export class AgentSkillsService {
 		projectId: string,
 		context: AgentMutationTelemetryContext,
 	): Promise<AgentSkillMutationResponse> {
-		const { [skillId]: _self, ...others } = await this.agentSkillRefs.skillsForRefs(
-			entity,
-			skillRefs,
-			{},
-		);
+		// Every body on the agent row counts, with or without a ref, as on master.
+		const { [skillId]: _self, ...others } = entity.skills ?? {};
 		this.assertNoNameClashes(others, [updated]);
 		const snapshot = captureAgentMutation(entity, skillRefs);
 		entity.skills = { ...entity.skills, [skillId]: updated };
@@ -425,6 +422,8 @@ export class AgentSkillsService {
 		projectId: string,
 		availableTo: AgentSkillAvailability,
 	): Promise<void> {
+		// A skill of one agent is part of that agent: the agent permission is enough.
+		if (availableTo === 'agent') return;
 		if (availableTo === 'instance') {
 			if (!hasGlobalScope(user, 'skill:create')) {
 				throw new ForbiddenError('You are not allowed to create skills for the whole instance.');

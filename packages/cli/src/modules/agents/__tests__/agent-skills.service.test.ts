@@ -247,6 +247,23 @@ describe('AgentSkillsService', () => {
 			expect(skillRefs.createSkills).not.toHaveBeenCalled();
 		});
 
+		it('creates a skill for this agent only without a project skill scope', async () => {
+			givenAgent({ schema: baseConfig });
+			vi.mocked(userHasScopes).mockResolvedValue(false);
+			skillRefs.createSkills.mockResolvedValue(['skill_new']);
+
+			await service.createAndAttachSkill(agentId, projectId, skill, context, 'agent');
+
+			expect(userHasScopes).not.toHaveBeenCalled();
+			expect(skillRefs.createSkills).toHaveBeenCalledWith(
+				expect.anything(),
+				[skill],
+				'user-1',
+				'agent',
+				{},
+			);
+		});
+
 		it('rejects a name that is hard to tell apart from a skill of the agent', async () => {
 			skillRefs.bodies.existing = skill;
 			givenAgent({ schema: { ...baseConfig, skills: [{ type: 'skill', id: 'existing' }] } });
@@ -308,6 +325,22 @@ describe('AgentSkillsService', () => {
 		});
 		await service.updateSkill(agentId, projectId, 'old', { instructions: 'Updated.' }, context);
 		expect(agent.skills.old).toMatchObject({ name: 'Old', instructions: 'Updated.' });
+	});
+
+	it('refuses a rename onto the name of an unreferenced body while the skills hub is off', async () => {
+		Object.assign(skillRefs, { usesSkillsHub: false });
+		givenAgent({
+			schema: { ...baseConfig, skills: [{ type: 'skill', id: 'skill_a' }] },
+			skills: {
+				skill_a: skill,
+				old: { ...skill, name: 'Old' },
+				older: { ...skill, name: 'Older' },
+			},
+		});
+
+		await expect(
+			service.updateSkill(agentId, projectId, 'old', { name: 'older' }, context),
+		).rejects.toThrow('Agent already has a skill with a name like "older".');
 	});
 
 	it('lists the skills the draft runs', async () => {
