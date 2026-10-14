@@ -47,12 +47,19 @@ export class OwnershipService {
 	}
 
 	reconstructProject(project: Partial<Project>): Project | undefined {
+<<<<<<< HEAD
 		if (typeof project !== 'object' || project === null) {
+=======
+		if (typeof project?.id !== 'string') {
+>>>>>>> 46761a60 (chore: Bundle/2.x (#41035))
 			return undefined;
 		}
 		return Object.assign(new Project(), project);
 	}
+<<<<<<< HEAD
 
+=======
+>>>>>>> 46761a60 (chore: Bundle/2.x (#41035))
 	copyUser(user: User): Partial<User> {
 		return {
 			...user,

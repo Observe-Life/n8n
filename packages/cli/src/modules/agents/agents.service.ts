@@ -346,13 +346,98 @@ export class AgentsService {
 		return { count, data: data.map(toChatListItem) };
 	}
 
+<<<<<<< HEAD
 	/** The agents overview list: every project the user belongs to, no scope check. */
 	async findByUserMembershipPaginated(
+=======
+	/**
+	 * One agent over n8n Chat (see the controller route's doc for the audience
+	 * this serves). Scoped like {@link findChatReachableByUserPaginated}.
+	 * Returns `null` when missing, unreachable, or unpublished to n8n Chat —
+	 * the controller turns all three into the same 404.
+	 */
+	async findChatReachableAgentForUser(
+		agentId: string,
+		user: User,
+	): Promise<AgentN8nChatAgentDetails | null> {
+		const projectIds = await this.projectScopeService.getProjectIds(user, ['agent:execute']);
+		const agent = await this.agentRepository.findChatReachableById(agentId, projectIds);
+		if (!agent) return null;
+
+		const schema = agent.activeVersion?.schema;
+		// Names are labels only: keep disabled sub-agents so older threads that
+		// delegated to them still show a name. Dedupe so a repeated entry shows once.
+		const subAgentIds = [
+			...new Set((schema?.subAgents?.agents ?? []).map((subAgent) => subAgent.agentId)),
+		];
+		const namesById = new Map(
+			(await this.agentRepository.findByIdsAndProjectId(subAgentIds, agent.projectId)).map(
+				(row) => [row.id, row.name],
+			),
+		);
+
+		return {
+			...toChatListItem(agent),
+			subAgents: subAgentIds.flatMap((id) => {
+				const name = namesById.get(id);
+				return name ? [{ id, name }] : [];
+			}),
+		};
+	}
+
+	/**
+	 * The user's own n8n Chat threads across every agent they can currently
+	 * reach over n8n Chat: a project where they hold `agent:execute`, with a
+	 * published config that carries the channel. Scoping by agent id (not just
+	 * project) keeps a thread out of the list the moment its agent's channel is
+	 * unpublished, even if the user still belongs to the project.
+	 */
+	async findN8nChatThreadsForUser(
+		user: User,
+		options: { limit: number; cursor?: string; agentId?: string; search?: string },
+	): Promise<AgentN8nChatThreadsResponse> {
+		const projectIds = await this.projectScopeService.getProjectIds(user, ['agent:execute']);
+		const agentIds = options.agentId
+			? await this.reachableAgentIds(options.agentId, projectIds)
+			: await this.agentRepository.findChatReachableIds(projectIds);
+		// `options` also carries `agentId`, already consumed above; the callee only reads
+		// `limit`/`cursor`/`search` off it.
+		return await this.agentExecutionService.findN8nChatThreadsForAgents(user.id, agentIds, options);
+	}
+
+	/**
+	 * Checks reachability for one agent directly, instead of loading every
+	 * reachable id and filtering in memory. An unreachable `agentId` resolves
+	 * to no agent ids, not an error — the caller already can't see that
+	 * agent's threads either way.
+	 */
+	private async reachableAgentIds(agentId: string, projectIds: string[] | null): Promise<string[]> {
+		const agent = await this.agentRepository.findChatReachableById(agentId, projectIds);
+		return agent ? [agent.id] : [];
+	}
+
+	/**
+	 * One of the user's own n8n Chat threads, scoped like
+	 * {@link findN8nChatThreadsForUser}. Returns `null` when the thread doesn't
+	 * exist, isn't owned by this user, or its agent isn't reachable over n8n
+	 * Chat anymore — the controller turns all three into the same 404.
+	 */
+	async findN8nChatThreadForUser(
+		user: User,
+		threadId: string,
+	): Promise<AgentN8nChatThreadSummary | null> {
+		const projectIds = await this.projectScopeService.getProjectIds(user, ['agent:execute']);
+		const agentIds = await this.agentRepository.findChatReachableIds(projectIds);
+		return await this.agentExecutionService.findN8nChatThreadForAgents(user.id, agentIds, threadId);
+	}
+
+	/** The agents overview list: every project where the user holds `agent:list`. */
+	async findListableByUserPaginated(
+>>>>>>> 46761a60 (chore: Bundle/2.x (#41035))
 		user: User,
 		options: ListAgentsQueryDto,
 	): Promise<AgentListResult> {
-		const projectRelations = await this.projectRelationRepository.findAllByUser(user.id);
-		const projectIds = projectRelations.map((pr) => pr.projectId);
+		const projectIds = await this.projectScopeService.getProjectIds(user, ['agent:list']);
 		return await this.agentRepository.findByProjectIdsPaginated(projectIds, options);
 	}
 

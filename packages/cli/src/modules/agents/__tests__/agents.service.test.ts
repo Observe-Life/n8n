@@ -754,27 +754,283 @@ describe('AgentsService', () => {
 		});
 	});
 
+<<<<<<< HEAD
 	describe('findByUserMembershipPaginated', () => {
+=======
+	describe('findChatReachableAgentForUser', () => {
 		const user = { id: 'user-1' } as unknown as User;
 
-		it('uses bare project membership and does not consult the scope service', async () => {
+		function makeReachableAgent(schemaOverrides: Record<string, unknown> = {}) {
+			return makeAgent({
+				id: 'agent-1',
+				name: 'Support',
+				projectId: 'project-1',
+				project: { id: 'project-1', name: 'Support Team' },
+				activeVersion: {
+					schema: {
+						name: 'Support',
+						model: 'anthropic/claude-sonnet-4-5',
+						instructions: 'published instructions',
+						personalisation: { icon: 'bot', gradient: { from: '#000000', to: '#FFFFFF' } },
+						description: 'Answers billing questions.',
+						...schemaOverrides,
+					},
+				},
+			} as never);
+		}
+
+		it('scopes to agent:execute, the scope the production chat route requires', async () => {
+			const { service, agentRepository, projectScopeService } = makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableById.mockResolvedValue(makeReachableAgent());
+
+			await service.findChatReachableAgentForUser('agent-1', user);
+
+			expect(projectScopeService.getProjectIds).toHaveBeenCalledWith(user, ['agent:execute']);
+			expect(agentRepository.findChatReachableById).toHaveBeenCalledWith('agent-1', ['project-1']);
+		});
+
+		it('passes a null project scope through, so a global role reaches every project', async () => {
+			const { service, agentRepository, projectScopeService } = makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(null);
+			agentRepository.findChatReachableById.mockResolvedValue(makeReachableAgent());
+
+			await service.findChatReachableAgentForUser('agent-1', user);
+
+			expect(agentRepository.findChatReachableById).toHaveBeenCalledWith('agent-1', null);
+		});
+
+		it('answers with the narrow chat item plus attachments and sub-agents, never the agent config', async () => {
+			const { service, agentRepository, projectScopeService } = makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableById.mockResolvedValue(makeReachableAgent());
+
+			const result = await service.findChatReachableAgentForUser('agent-1', user);
+
+			expect(result).toEqual({
+				id: 'agent-1',
+				name: 'Support',
+				personalisation: { icon: 'bot', gradient: { from: '#000000', to: '#FFFFFF' } },
+				description: 'Answers billing questions.',
+				project: { id: 'project-1', name: 'Support Team' },
+				attachments: { image: true, pdf: true, audio: false },
+				subAgents: [],
+			});
+			expect(result).not.toHaveProperty('schema');
+			expect(JSON.stringify(result)).not.toContain('published instructions');
+		});
+
+		it.each(['', 'unknown-provider/some-model'])(
+			'reports no attachment support for model "%s"',
+			async (model) => {
+				const { service, agentRepository, projectScopeService } = makeService();
+				projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+				agentRepository.findChatReachableById.mockResolvedValue(makeReachableAgent({ model }));
+
+				const result = await service.findChatReachableAgentForUser('agent-1', user);
+
+				expect(result?.attachments).toEqual({ image: false, pdf: false, audio: false });
+			},
+		);
+
+		it('resolves sub-agent names from the same project, including disabled ones, skipping repeated and unresolved entries', async () => {
+			const { service, agentRepository, projectScopeService } = makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableById.mockResolvedValue(
+				makeReachableAgent({
+					subAgents: {
+						agents: [
+							{ agentId: 'sub-1' },
+							{ agentId: 'sub-1' },
+							{ agentId: 'sub-2', enabled: false },
+							{ agentId: 'sub-3' },
+						],
+					},
+				}),
+			);
+			agentRepository.findByIdsAndProjectId.mockResolvedValue([
+				{ id: 'sub-1', name: 'Researcher' } as never,
+				{ id: 'sub-2', name: 'Retired' } as never,
+			]);
+
+			const result = await service.findChatReachableAgentForUser('agent-1', user);
+
+			expect(agentRepository.findByIdsAndProjectId).toHaveBeenCalledWith(
+				['sub-1', 'sub-2', 'sub-3'],
+				'project-1',
+			);
+			expect(result?.subAgents).toEqual([
+				{ id: 'sub-1', name: 'Researcher' },
+				{ id: 'sub-2', name: 'Retired' },
+			]);
+		});
+
+		it('returns null when the repository finds no reachable agent', async () => {
+			const { service, agentRepository, projectScopeService } = makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableById.mockResolvedValue(null);
+
+			await expect(service.findChatReachableAgentForUser('agent-1', user)).resolves.toBeNull();
+		});
+	});
+
+	describe('findN8nChatThreadsForUser', () => {
+		const user = { id: 'user-1' } as unknown as User;
+
+		it('scopes agent reachability to agent:execute, then narrows to chat-reachable agents', async () => {
+			const { service, agentRepository, agentExecutionService, projectScopeService } =
+				makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableIds.mockResolvedValue(['agent-1']);
+			const response = { data: [], nextCursor: null };
+			agentExecutionService.findN8nChatThreadsForAgents.mockResolvedValue(response);
+
+			const result = await service.findN8nChatThreadsForUser(user, {
+				limit: 20,
+				cursor: 'cursor-1',
+				search: 'refund',
+			});
+
+			expect(projectScopeService.getProjectIds).toHaveBeenCalledWith(user, ['agent:execute']);
+			expect(agentRepository.findChatReachableIds).toHaveBeenCalledWith(['project-1']);
+			expect(agentExecutionService.findN8nChatThreadsForAgents).toHaveBeenCalledWith(
+				'user-1',
+				['agent-1'],
+				{ limit: 20, cursor: 'cursor-1', search: 'refund' },
+			);
+			expect(result).toBe(response);
+		});
+
+		it('never asks for threads under an agent the user can no longer reach over n8n Chat', async () => {
+			// A thread's agent dropping out of `findChatReachableIds` (project
+			// removed, channel unpublished, agent deleted) must drop its threads
+			// from the list too, even though nothing here filters per-thread.
+			const { service, agentRepository, agentExecutionService, projectScopeService } =
+				makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableIds.mockResolvedValue([]);
+			agentExecutionService.findN8nChatThreadsForAgents.mockResolvedValue({
+				data: [],
+				nextCursor: null,
+			});
+
+			await service.findN8nChatThreadsForUser(user, { limit: 20 });
+
+			expect(agentExecutionService.findN8nChatThreadsForAgents).toHaveBeenCalledWith('user-1', [], {
+				limit: 20,
+			});
+		});
+
+		it('narrows to one agent when agentId is reachable', async () => {
+			const { service, agentRepository, agentExecutionService, projectScopeService } =
+				makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableById.mockResolvedValue(makeAgent({ id: 'agent-2' }));
+			agentExecutionService.findN8nChatThreadsForAgents.mockResolvedValue({
+				data: [],
+				nextCursor: null,
+			});
+
+			await service.findN8nChatThreadsForUser(user, { limit: 20, agentId: 'agent-2' });
+
+			expect(agentRepository.findChatReachableById).toHaveBeenCalledWith('agent-2', ['project-1']);
+			expect(agentRepository.findChatReachableIds).not.toHaveBeenCalled();
+			expect(agentExecutionService.findN8nChatThreadsForAgents).toHaveBeenCalledWith(
+				'user-1',
+				['agent-2'],
+				{ limit: 20, agentId: 'agent-2' },
+			);
+		});
+
+		it('returns an empty page, not an error, when agentId is unreachable', async () => {
+			const { service, agentRepository, agentExecutionService, projectScopeService } =
+				makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableById.mockResolvedValue(null);
+			agentExecutionService.findN8nChatThreadsForAgents.mockResolvedValue({
+				data: [],
+				nextCursor: null,
+			});
+
+			await service.findN8nChatThreadsForUser(user, { limit: 20, agentId: 'agent-unreachable' });
+
+			expect(agentExecutionService.findN8nChatThreadsForAgents).toHaveBeenCalledWith('user-1', [], {
+				limit: 20,
+				agentId: 'agent-unreachable',
+			});
+		});
+	});
+
+	describe('findN8nChatThreadForUser', () => {
+		const user = { id: 'user-1' } as unknown as User;
+
+		it('scopes agent reachability to agent:execute, then narrows to chat-reachable agents', async () => {
+			const { service, agentRepository, agentExecutionService, projectScopeService } =
+				makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableIds.mockResolvedValue(['agent-1']);
+			const summary = { id: 'thread-1', title: 'Refund status' };
+			agentExecutionService.findN8nChatThreadForAgents.mockResolvedValue(summary as never);
+
+			const result = await service.findN8nChatThreadForUser(user, 'thread-1');
+
+			expect(projectScopeService.getProjectIds).toHaveBeenCalledWith(user, ['agent:execute']);
+			expect(agentRepository.findChatReachableIds).toHaveBeenCalledWith(['project-1']);
+			expect(agentExecutionService.findN8nChatThreadForAgents).toHaveBeenCalledWith(
+				'user-1',
+				['agent-1'],
+				'thread-1',
+			);
+			expect(result).toBe(summary);
+		});
+
+		it('returns null when the thread falls outside the reachable agents', async () => {
+			const { service, agentRepository, agentExecutionService, projectScopeService } =
+				makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1']);
+			agentRepository.findChatReachableIds.mockResolvedValue([]);
+			agentExecutionService.findN8nChatThreadForAgents.mockResolvedValue(null);
+
+			await expect(service.findN8nChatThreadForUser(user, 'thread-1')).resolves.toBeNull();
+
+			expect(agentExecutionService.findN8nChatThreadForAgents).toHaveBeenCalledWith(
+				'user-1',
+				[],
+				'thread-1',
+			);
+		});
+	});
+
+	describe('findListableByUserPaginated', () => {
+>>>>>>> 46761a60 (chore: Bundle/2.x (#41035))
+		const user = { id: 'user-1' } as unknown as User;
+
+		it('scopes to agent:list, the scope the project list route requires', async () => {
 			const { service, agentRepository, projectRelationRepository, projectScopeService } =
 				makeService();
-			projectRelationRepository.findAllByUser.mockResolvedValue([
-				{ projectId: 'project-1' },
-				{ projectId: 'project-2' },
-			] as never);
+			projectScopeService.getProjectIds.mockResolvedValue(['project-1', 'project-2']);
 			agentRepository.findByProjectIdsPaginated.mockResolvedValue({ count: 0, data: [] });
 			const options = { skip: 0, take: 10 } as never;
 
-			await service.findByUserMembershipPaginated(user, options);
+			await service.findListableByUserPaginated(user, options);
 
-			expect(projectRelationRepository.findAllByUser).toHaveBeenCalledWith('user-1');
-			expect(projectScopeService.getProjectIds).not.toHaveBeenCalled();
+			expect(projectScopeService.getProjectIds).toHaveBeenCalledWith(user, ['agent:list']);
+			expect(projectRelationRepository.findAllByUser).not.toHaveBeenCalled();
 			expect(agentRepository.findByProjectIdsPaginated).toHaveBeenCalledWith(
 				['project-1', 'project-2'],
 				options,
 			);
+		});
+
+		it('passes a null project scope through, so a global role sees every project', async () => {
+			const { service, agentRepository, projectScopeService } = makeService();
+			projectScopeService.getProjectIds.mockResolvedValue(null);
+			agentRepository.findByProjectIdsPaginated.mockResolvedValue({ count: 0, data: [] });
+			const options = { skip: 0, take: 10 } as never;
+
+			await service.findListableByUserPaginated(user, options);
+
+			expect(agentRepository.findByProjectIdsPaginated).toHaveBeenCalledWith(null, options);
 		});
 	});
 

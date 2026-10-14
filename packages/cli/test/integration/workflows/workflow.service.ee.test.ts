@@ -43,6 +43,11 @@ describe('EnterpriseWorkflowService', () => {
 			mock(), // workflowPublishHistoryRepository
 			mock(), // workflowMutationHooks
 			mock(), // policyEnforcementService
+<<<<<<< HEAD
+=======
+			mock(), // nodeTypes
+			mock(), // credentialsPermissionChecker
+>>>>>>> 46761a60 (chore: Bundle/2.x (#41035))
 		);
 	});
 

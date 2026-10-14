@@ -67,6 +67,7 @@ export class WorkflowFilter extends BaseFilter {
 	@Expose()
 	triggerNodeTypes?: string[];
 
+<<<<<<< HEAD
 	/**
 	 * When `true`, the list is widened to include workflows that the workflow
 	 * identified by `parentWorkflowId` is permitted to call, even if those
@@ -85,6 +86,14 @@ export class WorkflowFilter extends BaseFilter {
 	@IsOptional()
 	@Expose()
 	parentWorkflowId?: string;
+=======
+	@IsArray()
+	@ArrayUnique()
+	@IsIn(WORKFLOW_EXECUTION_BLOCK_CAUSES, { each: true })
+	@IsOptional()
+	@Expose()
+	executionBlockedBy?: WorkflowExecutionBlockCause[];
+>>>>>>> 46761a60 (chore: Bundle/2.x (#41035))
 
 	static async fromString(rawFilter: string) {
 		return await this.toFilter(rawFilter, WorkflowFilter);
